@@ -43,48 +43,38 @@ def get_latest_posts(company_name, linkedin_url, max_posts=5):
         r = requests.get(linkedin_url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Find posts (simplified; grabs visible paragraphs and their links)
-        text_blocks = soup.find_all("p")
-        for p in text_blocks[:max_posts]:
-            post_text = p.get_text(strip=True)
-            if len(post_text) < 40:  # ignore very short
-                continue
+        # Grab visible paragraphs, skip About section (first few paragraphs)
+        text_blocks = [p.get_text(strip=True) for p in soup.find_all("p")]
+        text_blocks = [t for t in text_blocks if len(t) > 40]  # ignore very short
+        text_blocks = text_blocks[3:]  # skip About section (adjust if needed)
 
-            # Try to get a post URL if available
-            post_link_tag = p.find_parent("a", href=True)
-            if post_link_tag and "feed/update" in post_link_tag["href"]:
-                post_url = "https://www.linkedin.com" + post_link_tag["href"].split("?")[0]
-            else:
-                post_url = linkedin_url  # fallback
+        for text in text_blocks[:max_posts]:
+            clean_text = " ".join(text.split())  # remove extra spaces/newlines
 
-            # Try to get a post date from <time datetime="...">
-            time_tag = p.find_parent("div").find("time")
-            if time_tag and time_tag.has_attr("datetime"):
-                post_date = time_tag["datetime"].split("T")[0]
-            else:
-                post_date = datetime.date.today().isoformat()  # fallback
+            # URL fallback (still public pages, so exact post URL unavailable)
+            post_url = linkedin_url
 
-            # Filter posts in last 7 days only
-            post_datetime = datetime.datetime.strptime(post_date, "%Y-%m-%d").date()
-            if post_datetime < (datetime.date.today() - timedelta(days=7)):
-                continue
+            # Date fallback (we only have today for public pages)
+            post_date = datetime.date.today().isoformat()
 
-            # Determine category
+            # Keyword tagging
             category = "General"
             for key, words in keywords.items():
-                if any(word.lower() in post_text.lower() for word in words):
+                if any(word.lower() in clean_text.lower() for word in words):
                     category = key
                     break
 
             posts.append({
                 "Date": post_date,
                 "Company": company_name,
-                "Post text": post_text,
+                "Post text": clean_text,
                 "Post URL": post_url,
                 "Category": category
             })
+
     except Exception as e:
         print(f"Error scraping {company_name}: {e}")
+
     return posts
 
 # --------------------------
